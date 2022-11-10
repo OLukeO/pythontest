@@ -76,7 +76,7 @@ def measure(image, contours2, pixelsPerMetric):
     return origin
 
 if __name__ == "__main__":
-    image_path = 'C:/Users/User/Desktop/7777.jpg'
+    image_path = 'C:/Users/luke/Desktop/999.png'
     image = cv_imread(image_path)
     gray = preprocessing(image)
     contours2, pixelsPerMetric = edge_detect(gray)

@@ -17,7 +17,7 @@ cap = cv2.VideoCapture(0)
 
 while True:
     #ret, frame = cap.read()
-    frame = cv2.imread('C:/Users/luke/Desktop/77777.jpg')
+    frame = cv2.imread('C:/Users/luke/Desktop/888.jpg')
     cv2.rectangle(frame, (40, 80), (100, 140), (0, 0, 255), 3)
 
     imageYCrCb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCR_CB)
