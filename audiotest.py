@@ -3,8 +3,7 @@ from io import BytesIO
 from PIL import Image
 from flask import Flask, render_template, Response
 import threading
-cap = cv2.VideoCapture(0)
-
+cap = cv2.VideoCapture('output.mp4')
 
 def resize_img_2_bytes(image, resize_factor, quality):
     bytes_io = BytesIO()
@@ -44,24 +43,6 @@ def gen_frames():
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + img_bytes + b'\r\n')
 
-def video():
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))    # 取得影像寬度
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))  # 取得影像高度
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')          # 設定影片的格式為 MJPG
-    out = cv2.VideoWriter('output.mp4', fourcc, 20.0, (width,  height))  # 產生空的影片
-    if not cap.isOpened():
-        print("Cannot open camera")
-        exit()
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            print("Cannot receive frame")
-            break
-        out.write(frame)       # 將取得的每一幀圖像寫入空的影片
-
-    cap.release()
-    out.release()      # 釋放資源
-
 @app.route('/api/stream')
 def video_stream():
     return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
@@ -70,6 +51,5 @@ while True:
     t = threading.Thread()
     if __name__ == "__main__":
         app.run(host='0.0.0.0')
-        video()
 
 

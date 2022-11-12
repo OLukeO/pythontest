@@ -1,24 +1,85 @@
 import cv2
+import numpy as np
 import mediapipe as mp
-import os
+import multiprocessing as mps
 from imutils import perspective
 from imutils import contours
-import numpy as np
 import imutils
+
+
+class YuuzuCam:
+    def __init__(self, url):
+        self.url = url
+        self.cap = None
+        self.parent_conn, child_conn = mps.Pipe()
+        self.p = mps.Process(target=self.update, args=(child_conn, url))
+        self.p.daemon = True
+        self.p.start()
+
+    def update(self, conn, url):
+        print("Cam Loading...")
+        self.cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+        print("Cam Loaded...")
+        run = True
+
+        while run:
+            # grab frames from the buffer
+            self.cap.grab()
+            # receive input data
+            rec_dat = conn.recv()
+
+            if rec_dat == 1:
+                # if frame requested
+                ret, frame = self.cap.read()
+                conn.send(frame)
+
+            elif rec_dat == 2:
+                # if close requested
+                self.cap.release()
+                run = False
+
+        print("Connection Closed")
+        conn.close()
+
+    def end(self):
+        # send closure request to process
+        self.parent_conn.send(2)
+
+    def get_frame(self, resize=None):
+        self.parent_conn.send(1)
+        frame = self.parent_conn.recv()
+
+        # reset request
+        self.parent_conn.send(0)
+
+        # resize if needed
+        if resize is None:
+            return frame
+        else:
+            return self.rescale_frame(frame, resize)
+
+    def rescale_frame(self, frame, percent):
+        if frame is None:
+            self.end()
+            return None
+
+        return cv2.resize(frame, (0, 0), fx=percent, fy=percent)
+
+
+cam = YuuzuCam('rtsp://root:awedvhu0808@120.110.115.130:554/axis-media/media.amp')
+
+if not cam.p.is_alive():
+    print("Camera is not alive")
 
 mp_drawing = mp.solutions.drawing_utils
 mp_style = mp.solutions.drawing_styles
 mp_pose = mp.solutions.pose
 mp_hands = mp.solutions.hands
-
-
-cap = cv2.VideoCapture(0)
-cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
-
+#############################
 def bodyandmouthcheck(): ###身體和嘴範圍
     with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
-        while cap.isOpened():
-            ret, frame = cap.read()
+        while cam.p.is_alive():
+            ret, frame = cam.get_frame()
 
             # Recolor image to RGB
             image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -57,7 +118,7 @@ def bodyandmouthcheck(): ###身體和嘴範圍
             if cv2.waitKey(10) & 0xFF == ord('q'):
                 break
 
-        cap.release()
+        #cap.release()
         cv2.destroyAllWindows()
 
 def hand(): ###手掌偵測
@@ -66,13 +127,13 @@ def hand(): ###手掌偵測
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5) as hands:
 
-        if not cap.isOpened():
+        if not cam.p.is_alive():
             print("Cannot open camera")
             exit()
 
         run = True  # 設定是否更動觸碰區位置
         while True:
-            ret, img = cap.read()
+            ret, img = cam.get_frame()
             if not ret:
                 print("Cannot receive frame")
                 break
@@ -123,7 +184,7 @@ def hand(): ###手掌偵測
 
             cv2.rectangle(img, (150, 180), (420,300), (0, 0, 255), 2)  # 畫出觸碰區
             cv2.imshow('oxxostudio', img)
-    cap.release()
+    #cap.release()
     cv2.destroyAllWindows()
 #######三
 # 讀取中文路徑圖檔(圖片讀取為BGR)
@@ -197,8 +258,134 @@ def measure(image, contours2, pixelsPerMetric):
         print("no")
     #show_img("Image", origin)
     #return origin
+#############################
+def calculate_distance(a, b):
+    a = np.array(a)  # First
+    b = np.array(b)  # Mid
+    distance = np.linalg.norm(a - b)
+
+    return distance
 
 
+def calculate_angle(a, b, c):
+    a = np.array(a)  # First
+    b = np.array(b)  # Mid
+    c = np.array(c)  # End
+
+    radians = np.arctan2(c[1] - b[1], c[0] - b[0]) - np.arctan2(a[1] - b[1], a[0] - b[0])
+    angles = np.abs(radians * 180.0 / np.pi)
+
+    if angles > 180.0:
+        angles = 360 - angles
+
+    return angles
+
+
+def main():
+    bodyandmouthcheck()
+    hand()
+
+    # Curl counter variables
+    counter = 0
+    trigger = False
+    stage = None
+
+    with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
+        while 1:
+            frame = cam.get_frame()
+
+            # Get Size of frame
+            width = 1920
+            height = 1080
+
+            # Recolor image to RGB
+            image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            image.flags.writeable = False
+
+            # Make detection
+            results = pose.process(image)
+
+            # Recolor back to BGR
+            image.flags.writeable = True
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+            # Extract landmarks
+            try:
+                landmarks = results.pose_landmarks.landmark
+
+                # Get coordinates
+                shoulder = [landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].x,
+                            landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y]
+                elbow = [landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].x,
+                         landmarks[mp_pose.PoseLandmark.LEFT_ELBOW.value].y]
+                wrist = [landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].x,
+                         landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value].y]
+                mouth = [landmarks[mp_pose.PoseLandmark.MOUTH_RIGHT.value].x * width,
+                         landmarks[mp_pose.PoseLandmark.MOUTH_RIGHT.value].y * height]
+                index = [landmarks[mp_pose.PoseLandmark.RIGHT_INDEX.value].x * width,
+                         landmarks[mp_pose.PoseLandmark.RIGHT_INDEX.value].y * height]
+
+                # Calculate angle
+                angle = calculate_angle(shoulder, elbow, wrist)
+                distances = calculate_distance(index, mouth)
+
+                # Visualize angle
+                cv2.putText(image, str(distances),
+                            tuple(np.multiply(index, [width, height]).astype(int)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA
+                            )
+
+                # Curl counter logic
+                # if angle > 160:
+                #     stage = "down"
+                # if angle < 30 and stage == 'down':
+                #     stage = "up"
+                #     counter += 1
+                #     print(counter)
+                if distances <= 20:
+                    if not trigger:
+                        trigger = True
+                        counter += 1
+                elif distances >= 60:
+                    if trigger:
+                        trigger = False
+
+            except:
+                pass
+
+            # Render curl counter
+            # Setup status box
+            cv2.rectangle(image, (0, 0), (225, 73), (245, 117, 16), -1)
+
+            # Rep data
+            cv2.putText(image, 'REPS', (15, 12),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
+            cv2.putText(image, str(counter),
+                        (10, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2, cv2.LINE_AA)
+
+            # Stage data
+            cv2.putText(image, 'STAGE', (65, 12),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
+            cv2.putText(image, stage,
+                        (60, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2, cv2.LINE_AA)
+
+            # Render detections
+            mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
+                                      mp_drawing.DrawingSpec(color=(245, 117, 66), thickness=2, circle_radius=2),
+                                      mp_drawing.DrawingSpec(color=(245, 66, 230), thickness=2, circle_radius=2)
+                                      )
+
+            cv2.imshow("frame", image)
+
+            key = cv2.waitKey(1)
+            if key == 13:  # 13 is the Enter Key
+                break
+
+    cv2.destroyAllWindows()
+    cam.end()
 
 if __name__ == '__main__':
-    hand()
+    main()
+    mps.freeze_support()
