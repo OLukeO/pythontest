@@ -8,15 +8,28 @@
 
 from flask import Flask
 from flask_cors import CORS
+import os
+import request
 import json
 
 app = Flask(__name__)
 CORS(app)
-file_ = {'video_file': ('output.mp4', open('output.mp4', 'rb'))}
+file_ = {'video_file': open('C:/Users/luke/PycharmProjects/pythonProject/output.mp4', 'rb')}
 
 @app.route('/', methods=['GET'])
-def index():
-    return file_
+def upload():
+    try:
+        fileName = '{0}{1}{2}'.format('zz', ''.join(random.sample(char_set, 8)),  '.mp4')
+        path = os.path.join('web', app.config['UPLOAD_FOLDER'], fileName)
+        url = '/video/{0}'.format(fileName)
+
+        file = request.files['videoFile']
+
+        if file:
+            file.save(path)
+            return flask.jsonify({'success': True , 'fileName': url})
+    except Exception as ex:
+        return flask.jsonify({'success': False, 'message': ex})
 
 if __name__=='__main__':
     app.run(host='0.0.0.0',port=5000, debug=True)

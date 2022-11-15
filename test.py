@@ -5,7 +5,9 @@ from imutils import perspective
 from imutils import contours
 import numpy as np
 import imutils
+from flask import Flask,send_file
 
+app = Flask(__name__)
 mp_drawing = mp.solutions.drawing_utils
 mp_style = mp.solutions.drawing_styles
 mp_pose = mp.solutions.pose
@@ -40,7 +42,10 @@ def bodyandmouthcheck(): ###身體和嘴範圍
                 y = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value].y
 
                 if x*640 > 130 and x*640 < 600 and y*480 > 60 and y*480 < 450 :
-                    print("yes")
+                    mp4 = send_file("C:/Users/luke/Desktop/Sequence 02.mp4")
+                    mp4.headers['tok'] = "123456"
+                    return mp4
+                    break
 
             except:
                 pass
@@ -200,5 +205,10 @@ def measure(image, contours2, pixelsPerMetric):
 
 
 
-if __name__ == '__main__':
-    hand()
+
+@app.route("/")
+def hello():
+    return bodyandmouthcheck()
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0" ,port=5000)
